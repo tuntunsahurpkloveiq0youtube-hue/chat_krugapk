@@ -2,6 +2,11 @@ name: Развернуть архив
 
 on:
   workflow_dispatch:
+    inputs:
+      archive:
+        description: 'Путь к zip (пусто — найти автоматически)'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -10,32 +15,43 @@ jobs:
   unpack:
     runs-on: ubuntu-latest
     steps:
-      - name: Взять репозиторий
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Проверить архив и распаковать
+      - name: Найти архив
+        id: find
         run: |
           set -e
-          if [ ! -f krug-github.zip ]; then
-            echo "::error::В корне репозитория нет krug-github.zip"
+          p="${{ inputs.archive }}"
+          if [ -z "$p" ]; then
+            p=$(git ls-files '*.zip' | head -n 1)
+          fi
+          if [ -z "$p" ] || [ ! -f "$p" ]; then
+            echo "::error::Архив не найден. Список файлов:"
+            git ls-files | head -n 60
             exit 1
           fi
-          mkdir -p ._unpack
-          unzip -o -q krug-github.zip -d ._unpack
+          echo "Найден архив: $p"
+          echo "path=$p" >> "$GITHUB_OUTPUT"
+
+      - name: Распаковать в корень
+        run: |
+          set -e
+          rm -rf ._unpack && mkdir -p ._unpack
+          unzip -o -q "${{ steps.find.outputs.path }}" -d ._unpack
           rsync -a --exclude='.git' ._unpack/ ./
           rm -rf ._unpack
           ls -la
 
-      - name: Удалить архив и закоммитить файлы
+      - name: Удалить архив и закоммитить
         run: |
           set -e
-          rm -f krug-github.zip
+          rm -f "${{ steps.find.outputs.path }}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           if git diff --cached --quiet; then
             echo "Изменений нет"
           else
-            git commit -m "Развернуть файлы из krug-github.zip"
+            git commit -m "Развернуть файлы из архива"
             git push
           fi
