@@ -1,0 +1,41 @@
+name: Развернуть архив
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  unpack:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Взять репозиторий
+        uses: actions/checkout@v4
+
+      - name: Проверить архив и распаковать
+        run: |
+          set -e
+          if [ ! -f krug-github.zip ]; then
+            echo "::error::В корне репозитория нет krug-github.zip"
+            exit 1
+          fi
+          mkdir -p ._unpack
+          unzip -o -q krug-github.zip -d ._unpack
+          rsync -a --exclude='.git' ._unpack/ ./
+          rm -rf ._unpack
+          ls -la
+
+      - name: Удалить архив и закоммитить файлы
+        run: |
+          set -e
+          rm -f krug-github.zip
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Изменений нет"
+          else
+            git commit -m "Развернуть файлы из krug-github.zip"
+            git push
+          fi
